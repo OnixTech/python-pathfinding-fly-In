@@ -1,4 +1,10 @@
 from enum import Enum
+from exceptions import (
+        MetadataError, 
+        HubError, 
+        ConnectionsError, 
+        MapError,
+        )
 
 
 class ZoneType(str, Enum):
@@ -37,13 +43,19 @@ class Metadata:
     def _validation(self) -> None:
         
         if not isinstance(self.zone, ZoneType):
-            raise ValueError(
+            raise MetadataError(
                 f"ZoneType error: {self.zone} is not a valid zone type"
             )
 
         if type(self.max_drones) is not int or self.max_drones <= 0:
-            raise ValueError("max_drones must be a positive integer")
+            raise MetadataError("max_drones must be a positive integer")
 
+    def __repr__(self) -> str:
+        a = f"[Zone={self.zone.value} "
+        b = (f"Color={self.color if self.color else 'NO_COLOR_ASSIGNED'} " 
+             f"max_drones={self.max_drones}]")
+        s = a + b
+        return s
 
 class Hub:
     def __init__(
@@ -60,21 +72,29 @@ class Hub:
     def _validation(self) -> None:
 
         if not self.name or " " in self.name or "-" in self.name:
-            raise ValueError(f"Invalid hub name: {self.name}")
+            raise HubError(f"Invalid hub name: {self.name}")
 
         if (
             not isinstance(self.coordinates, tuple)
             or len(self.coordinates) != 2
             or any(type(value) is not int for value in self.coordinates)
         ):
-            raise ValueError("Coordinates must contain two integers")
+            raise HubError("Coordinates must contain two integers")
+
+    def __repr__(self) -> str:
+        s = f"Hub: {self.name} {self.coordinates}"
+        
+        if self.metadata:
+            s = s + f" {self.metadata!r}"
+
+        return s
 
 
 class Connection:
     def __init__(
         self,
-        hub1: str,
-        hub2: str,
+        hub1: Hub,
+        hub2: Hub,
         link_capacity: int = 1,
     ) -> None:
         self.hub1 = hub1
@@ -82,7 +102,12 @@ class Connection:
         self.link_capacity = link_capacity
         
         if type(self.link_capacity) is not int or link_capacity <= 0:
-            raise ValueError("link_capacity must be positive integer")
+            raise ConnectionsError(f"link_capacity ({self.link_capacity}) "
+                              "must be grater than 0")
+
+    def __repr__(self) -> str:
+        return (f"{self.hub1.name}-{self.hub2.name} "
+                f"capacity: {self.link_capacity}")
 
 
 class Map:
@@ -101,4 +126,11 @@ class Map:
         self.connections = connections
 
         if type(self.nb_drones) is not int or nb_drones <= 0:
-            raise ValueError("nb_drones must be positive integer")
+            raise MapError("nb_drones must be positive integer")
+
+    def __repr__(self) -> str:
+        return (f"drones: {self.nb_drones}\n"
+                f"start: {self.start}\n"
+                f"end: {self.end}\n"
+                f"hubs: {self.hubs}\n"
+                f"connections: {self.connections}\n")

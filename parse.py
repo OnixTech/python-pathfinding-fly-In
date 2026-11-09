@@ -2,40 +2,47 @@
 
 import os
 import sys
-from models import Hub, Map, Metadata, ZoneType, FileKeys, MetaKeys, Connection
-from enum import Enum
+from models import (
+        Hub, 
+        Map, 
+        Metadata, 
+        ZoneType, 
+        FileKeys, 
+        MetaKeys, 
+        Connection
+        )
 from typing import TypedDict
+from exceptions import ParseError
 
 
 class MapBuilder():
     def __init__(self, data: dict[str, list[str]]) -> None:
         self._data = data
-#        self.map: Map = self._build_map()
-        self._build_map()
+        self._nb_drones = int(self._data["nb_drones"][0])
+        self._start_hub = self._build_hub(self._data["start_hub"][0])
+        self._end_hub = self._build_hub(self._data["end_hub"][0])
+        self._hubs: list[Hub] = []
 
-    def _build_map(self): # -> Map:
-        nb_drones = int(self._data["nb_drones"][0])
-        start_hub = self._build_hub(data=self._data["start_hub"][0])
-        end_hub = self._build_hub(data=self._data["end_hub"][0])
-        hubs: list[Hub] = []
-        connections: list[Connection] = []
+        if "hub" in self._data:
+            for hub in self._data["hub"]:
+                self._hubs.append(self._build_hub(hub))
+        
+        if not "connection" in self._data:
+            raise ParseError("Connection information must exist")
 
-        print(nb_drones, start_hub, end_hub)
-#         for k, v in self._data:
-#             if k == "hub":
-#                 hubs.append(self._build_hub(k, v[0]))
-# 
-#             if k == "connection":
-#                 connections.append(self_build_connection(v[0]))
-# 
-#         return {
-#             "nb_drones": int(self._data["nb_drones"][0]),
-#             "start_end": [
-#                 Hub(start[0], s_xy, start[3]),
-#                 Hub(end[0], e_xy, end[3])
-#             ],
-#             "connections": [],
-#         }
+        self._connections: list[Connection] = []
+        for connection in self._data["connection"]:
+            self._connections.append(self._build_connection(connection))
+
+    def get_map(self) -> Map:
+
+        return Map(
+                nb_drones=self._nb_drones,
+                start=self._start_hub,
+                end=self._end_hub,
+                hubs=self._hubs,
+                connections=self._connections
+                )
 
     def _build_metadata(self, data: list[str]) -> Metadata:
         metas: dict[str, str] = {}
@@ -46,11 +53,11 @@ class MapBuilder():
             for meta in split_metadata:
                 k = meta.replace("[", "").replace("]", "").split("=")
                 if k[0] not in MetaKeys:
-                    raise ValueError(f"Metadata type error: {k[0]}"
+                    raise ParseError(f"Metadata type error: {k[0]}"
                                      " is not a valid meta type"
                     )
                 if len(k) != 2:
-                    raise ValueError("Invalid metadata format")
+                    raise ParseError("Invalid metadata format")
                     
                 metas[k[0]] = k[1]
 
@@ -71,7 +78,7 @@ class MapBuilder():
         split_data = data.split()
         
         if len(split_data) < 3:
-            raise ValueError("Hub must contain name and coordinates")
+            raise ParseError("Hub must contain name and coordinates")
 
         name, x, y = split_data[:3]
 
@@ -79,12 +86,40 @@ class MapBuilder():
                    coordinates=(int(x), int(y)),
                    metadata=self._build_metadata(split_data)
                   )
-    
 
-def get_file() -> MapBuilder:
+    def _build_connection(self, data: str) -> Connection:
+        s_hubs = data.replace("-", " ").split()
+
+        if len(s_hubs) != 2 and len(s_hubs) != 3:
+            raise ParseError(f"A connection must be between two hubs")
+
+        hubs: list[Hub] = []
+        for name in s_hubs[:2]: 
+            name = name.strip()
+
+            if name == self._start_hub.name:
+                hubs.append(self._start_hub)
+            elif name == self._end_hub.name:
+                hubs.append(self._end_hub)
+            else:
+                hub = next((hub for hub in self._hubs if hub.name == name),
+                            None)
+                if hub is None:
+                    print(s_hubs)
+                    raise ParseError(f"Hub not found: {name}")
+                hubs.append(hub)
+
+        link = 1
+        if len(s_hubs) == 3:
+            link = int(s_hubs[2].replace("]", "").split("=")[1])
+
+        return Connection(hubs[0], hubs[1], link_capacity=link)
+
+
+def get_file() -> dict[str, list[str]]:
 
     if len(sys.argv) < 2:
-        raise ValueError("Missing filename")
+        raise ParseError("Missing filename")
 
     filename = sys.argv[1]
     data: dict[str, list[str]] = {}
@@ -100,15 +135,23 @@ def get_file() -> MapBuilder:
                 kv: list[str] = line.split(":")
 
                 if not kv[0] in FileKeys:
-                    raise ValueError(f"Key format not acepted for {kv[0]}")
+                    raise ParseError(f"Key format not acepted for {kv[0]}")
                 else:
                     data.setdefault(kv[0], []).append(kv[1])
                     
-        a = MapBuilder(data)            
-        return a
+        return data
 
     else:
         raise FileNotFoundError(f"File not found: {filename}")
 
 
-print(get_file())
+def main() -> None:
+    data = get_file()
+    builder = MapBuilder(data)
+    my_map = builder.get_map()
+
+    print(my_map)
+
+
+if __name__ == "__main__":
+    main()
