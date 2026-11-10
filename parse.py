@@ -61,18 +61,15 @@ class MapBuilder():
                     
                 metas[k[0]] = k[1]
 
-        args: MetadataArgs = {}
+        zone = ZoneType(metas.get("zone", "normal"))
+        color = metas.get("color")
+        max_drones = int(metas.get("max_drones", "1"))
 
-        if "zone" in metas:
-            args["zone"] = ZoneType(metas["zone"])
-
-        if "color" in metas:
-            args["color"] = metas["color"]
-
-        if "max_drones" in metas:
-            args["max_drones"] = int(metas["max_drones"])
-
-        return Metadata(**args)
+        return Metadata(
+            zone=zone,
+            color=color,
+            max_drones=max_drones
+        )
 
     def _build_hub(self, data: str) -> Hub:
         split_data = data.split()
