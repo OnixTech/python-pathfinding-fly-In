@@ -18,6 +18,11 @@ from exceptions import ParseError
 class MapBuilder():
     def __init__(self, data: dict[str, list[str]]) -> None:
         self._data = data
+
+        for key in ("nb_drones", "start_hub", "end_hub"):
+            if key not in self._data or len(self._data[key]) != 1:
+                raise ParseError(f"Expected exactly one '{key}'")
+
         self._nb_drones = int(self._data["nb_drones"][0])
         self._start_hub = self._build_hub(self._data["start_hub"][0])
         self._end_hub = self._build_hub(self._data["end_hub"][0])
@@ -25,14 +30,31 @@ class MapBuilder():
 
         if "hub" in self._data:
             for hub in self._data["hub"]:
-                self._hubs.append(self._build_hub(hub))
+                new_hub = self._build_hub(hub)
+
+                if new_hub.name in (
+                    self._start_hub.name,
+                    self._end_hub.name
+                ) or any(h.name == new_hub.name for h in self._hubs):
+                    raise HubError(f"Duplicate hub: (new_hub.name)")
+                
+                self._hubs.append(new_hub)
         
         if not "connection" in self._data:
             raise ParseError("Connection information must exist")
 
         self._connections: list[Connection] = []
         for connection in self._data["connection"]:
-            self._connections.append(self._build_connection(connection))
+            new_connection = self._build_connection(connection)
+
+            for existing in self._connections:
+                if (existing.hub1.name, existing.hub2.name) == {
+                    new_connection.hub1.name,
+                    new_connection.hub2.name
+                    }:
+                    raise ConnectionsError("Duplicate connection")
+
+            self._connections.append(new_connection)
 
     def get_map(self) -> Map:
 
@@ -108,7 +130,12 @@ class MapBuilder():
 
         link = 1
         if len(s_hubs) == 3:
-            link = int(s_hubs[2].replace("]", "").split("=")[1])
+            metadata = s_hubs[2].strip("[]").split("=")
+            
+            if len(metadata) != 2 or metadata[0] != "max_link_capacity":
+                raise ConnectionsError("Invalid connection metadata")
+
+            link = int(metadata[1])
 
         return Connection(hubs[0], hubs[1], link_capacity=link)
 
@@ -125,7 +152,6 @@ def get_file() -> dict[str, list[str]]:
             content = file.read()
 
             for line in content.splitlines():
-
                 if line.strip().startswith("#") or not line.strip():
                     continue
 
